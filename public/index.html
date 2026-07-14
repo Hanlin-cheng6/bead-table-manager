@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="拼豆工位">
+  <title>拼豆工位管理</title>
+  <meta name="theme-color" content="#d9684a">
+  <meta name="description" content="拼豆实体店工位管理系统 - 实时桌位状态、倒计时、统计分析">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='30' cy='30' r='18' fill='%23e07856'/><circle cx='70' cy='30' r='18' fill='%236bbf8a'/><circle cx='30' cy='70' r='18' fill='%23f5a623'/><circle cx='70' cy='70' r='18' fill='%23c5a3e0'/></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- 顶部栏 -->
+    <header class="header">
+      <div class="header-left">
+        <h1 class="logo">拼豆工位管理</h1>
+        <span class="header-sub">Bead Workshop</span>
+        <div class="clock" id="clock">--:--:--</div>
+      </div>
+      <nav class="nav" role="tablist" aria-label="主导航">
+        <button class="nav-btn active" data-view="dashboard" role="tab" aria-selected="true">看板</button>
+        <button class="nav-btn" data-view="stats" role="tab" aria-selected="false">统计</button>
+        <button class="nav-btn" data-view="settings" role="tab" aria-selected="false">设置</button>
+      </nav>
+    </header>
+
+    <!-- 连接状态 -->
+    <div class="conn-bar" id="connBar">
+      <span class="conn-dot"></span>
+      <span class="conn-text">连接中...</span>
+    </div>
+
+    <!-- 看板视图 -->
+    <main class="view active" id="view-dashboard">
+      <div class="stats-bar" id="statsBar"></div>
+      <div class="table-grid" id="tableGrid"></div>
+    </main>
+
+    <!-- 统计视图 -->
+    <main class="view" id="view-stats">
+      <div class="stats-panel" id="statsPanel"></div>
+    </main>
+
+    <!-- 设置视图 -->
+    <main class="view" id="view-settings">
+      <div class="settings-panel">
+        <section class="settings-section">
+          <h2>桌位管理</h2>
+          <div class="table-list" id="tableSettingsList"></div>
+          <div class="add-form">
+            <input type="text" id="newTableName" placeholder="桌名 (如: 9号桌)" class="input">
+            <input type="number" id="newTableSeats" placeholder="座位" value="4" min="1" max="20" class="input input-seats">
+            <button id="addTableBtn" class="btn btn-primary">添加</button>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h2>手机访问</h2>
+          <div class="access-info" id="accessInfo">加载中...</div>
+        </section>
+
+        <section class="settings-section">
+          <h2>每日收班</h2>
+          <p class="hint">收班会结束所有使用中的桌位，归档当日数据，并将所有桌位重置为空闲。</p>
+          <button id="closeDayBtn" class="btn btn-danger">执行收班</button>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- 收班确认弹窗 -->
+  <div class="modal-overlay" id="closeDayModal" style="display:none;">
+    <div class="modal">
+      <h3>确认收班？</h3>
+      <p id="closeDaySummary"></p>
+      <div class="modal-actions">
+        <button class="btn btn-cancel" id="closeDayCancel">取消</button>
+        <button class="btn btn-danger" id="closeDayConfirm">确认收班</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 时长设置弹窗 -->
+  <div class="modal-overlay" id="durationModal" style="display:none;">
+    <div class="modal">
+      <h3 id="durationModalTitle">设置使用时长</h3>
+      <p style="margin-bottom:16px;">为 <strong id="durationTableName"></strong> 设置时长</p>
+      <div class="duration-quick">
+        <button class="duration-btn" data-min="30">30 分钟</button>
+        <button class="duration-btn" data-min="60">1 小时</button>
+        <button class="duration-btn" data-min="90">1.5 小时</button>
+        <button class="duration-btn" data-min="120">2 小时</button>
+        <button class="duration-btn" data-min="180">3 小时</button>
+      </div>
+      <div class="duration-custom">
+        <input type="number" id="durationInput" placeholder="自定义（分钟）" class="input" min="1" max="600">
+        <span class="duration-unit">分钟</span>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-cancel" id="durationCancel">取消</button>
+        <button class="btn btn-primary" id="durationConfirm">确认开始</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 使用中操作弹窗 -->
+  <div class="modal-overlay" id="inUseModal" style="display:none;">
+    <div class="modal">
+      <h3 id="inUseTableName"></h3>
+      <div class="in-use-info">
+        <div class="in-use-remaining">
+          <span class="label">剩余时间</span>
+          <span class="value" id="inUseRemaining">--:--:--</span>
+        </div>
+        <div class="in-use-start">
+          <span class="label">开始时间</span>
+          <span class="value" id="inUseStartTime">--:--</span>
+        </div>
+      </div>
+      <div class="in-use-extend">
+        <p style="font-size:13px;color:var(--text-sec);margin-bottom:10px;">延长时长</p>
+        <div class="duration-quick">
+          <button class="duration-btn" data-min="30">+30 分钟</button>
+          <button class="duration-btn" data-min="60">+1 小时</button>
+          <button class="duration-btn" data-min="120">+2 小时</button>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-cancel" id="inUseClose">关闭</button>
+        <button class="btn btn-danger" id="inUseEnd">结束使用</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
