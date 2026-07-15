@@ -1,4 +1,281 @@
-// ==================== 状态 ====================
+// ==================== 认证逻辑 ====================
+
+let authToken = localStorage.getItem('token') || '';
+let currentStoreId = null;
+let currentStoreName = '';
+
+function showAuth() {
+  document.getElementById('authApp').style.display = '';
+  document.getElementById('storeApp').style.display = 'none';
+  showLoginForm();
+}
+
+function showStoreApp() {
+  document.getElementById('authApp').style.display = 'none';
+  document.getElementById('storeApp').style.display = '';
+}
+
+function showLoginForm() {
+  document.getElementById('loginForm').style.display = '';
+  document.getElementById('registerForm').style.display = 'none';
+  document.getElementById('forgotPasswordForm').style.display = 'none';
+  document.getElementById('loginError').style.display = 'none';
+  document.getElementById('loginUsername').value = '';
+  document.getElementById('loginPassword').value = '';
+}
+
+function showRegisterForm() {
+  document.getElementById('loginForm').style.display = 'none';
+  document.getElementById('registerForm').style.display = '';
+  document.getElementById('forgotPasswordForm').style.display = 'none';
+  document.getElementById('registerError').style.display = 'none';
+  document.getElementById('regStoreName').value = '';
+  document.getElementById('regUsername').value = '';
+  document.getElementById('regPassword').value = '';
+  document.getElementById('regPassword2').value = '';
+}
+
+function showForgotPasswordForm() {
+  document.getElementById('loginForm').style.display = 'none';
+  document.getElementById('registerForm').style.display = 'none';
+  document.getElementById('forgotPasswordForm').style.display = '';
+  document.getElementById('forgotPasswordError').style.display = 'none';
+  document.getElementById('fpUsername').value = '';
+  document.getElementById('fpStoreName').value = '';
+  document.getElementById('fpPassword').value = '';
+  document.getElementById('fpPassword2').value = '';
+}
+
+async function doLogin() {
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+
+  if (!username || !password) {
+    errEl.textContent = '请输入用户名和密码';
+    errEl.style.display = '';
+    return;
+  }
+
+  errEl.style.display = 'none';
+  document.getElementById('loginBtn').textContent = '登录中...';
+  document.getElementById('loginBtn').disabled = true;
+
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      authToken = data.token;
+      currentStoreId = data.storeId;
+      currentStoreName = data.storeName;
+      localStorage.setItem('token', authToken);
+      enterStore();
+    } else {
+      let msg = data.error || '登录失败';
+      // 429/401 可能包含 attempts / remaining / lockSeconds
+      if (res.status === 429 && data.lockSeconds) {
+        const min = Math.ceil(data.lockSeconds / 60);
+        msg = `登录失败次数过多，请 ${min} 分钟后重试`;
+      } else if (typeof data.remaining === 'number' && data.remaining > 0) {
+        msg = `密码错误，已失败 ${data.attempts || 1} 次，还剩 ${data.remaining} 次机会`;
+      } else if (data.locked) {
+        const min = Math.ceil((data.lockSeconds || 0) / 60);
+        msg = `密码错误次数过多，已锁定 ${min} 分钟，请找回密码或稍后再试`;
+      } else if (data.attempts) {
+        msg = `密码错误，已失败 ${data.attempts} 次`;
+      }
+      errEl.textContent = msg;
+      errEl.style.display = '';
+    }
+  } catch {
+    errEl.textContent = '网络错误，请重试';
+    errEl.style.display = '';
+  } finally {
+    document.getElementById('loginBtn').textContent = '登录';
+    document.getElementById('loginBtn').disabled = false;
+  }
+}
+
+async function doResetPassword() {
+  const username = document.getElementById('fpUsername').value.trim();
+  const storeName = document.getElementById('fpStoreName').value.trim();
+  const password = document.getElementById('fpPassword').value;
+  const password2 = document.getElementById('fpPassword2').value;
+  const errEl = document.getElementById('forgotPasswordError');
+
+  if (!username || !storeName || !password) {
+    errEl.textContent = '请填写所有字段';
+    errEl.style.display = '';
+    return;
+  }
+  if (password.length < 6) {
+    errEl.textContent = '新密码至少6位';
+    errEl.style.display = '';
+    return;
+  }
+  if (password !== password2) {
+    errEl.textContent = '两次密码输入不一致';
+    errEl.style.display = '';
+    return;
+  }
+
+  errEl.style.display = 'none';
+  document.getElementById('resetPasswordBtn').textContent = '重置中...';
+  document.getElementById('resetPasswordBtn').disabled = true;
+
+  try {
+    const res = await fetch('/api/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, storeName, password })
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      alert('密码重置成功，请用新密码登录');
+      showLoginForm();
+      document.getElementById('loginUsername').value = username;
+    } else {
+      errEl.textContent = data.error || '重置失败';
+      errEl.style.display = '';
+    }
+  } catch {
+    errEl.textContent = '网络错误，请重试';
+    errEl.style.display = '';
+  } finally {
+    document.getElementById('resetPasswordBtn').textContent = '确认重置';
+    document.getElementById('resetPasswordBtn').disabled = false;
+  }
+}
+
+async function doRegister() {
+  const storeName = document.getElementById('regStoreName').value.trim();
+  const username = document.getElementById('regUsername').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const password2 = document.getElementById('regPassword2').value;
+  const errEl = document.getElementById('registerError');
+
+  if (!storeName || !username || !password) {
+    errEl.textContent = '请填写所有字段';
+    errEl.style.display = '';
+    return;
+  }
+  if (password !== password2) {
+    errEl.textContent = '两次密码输入不一致';
+    errEl.style.display = '';
+    return;
+  }
+
+  errEl.style.display = 'none';
+  document.getElementById('registerBtn').textContent = '注册中...';
+  document.getElementById('registerBtn').disabled = true;
+
+  try {
+    const res = await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, storeName })
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      authToken = data.token;
+      currentStoreId = data.storeId;
+      currentStoreName = data.storeName;
+      localStorage.setItem('token', authToken);
+      enterStore();
+    } else {
+      errEl.textContent = data.error || '注册失败';
+      errEl.style.display = '';
+    }
+  } catch {
+    errEl.textContent = '网络错误，请重试';
+    errEl.style.display = '';
+  } finally {
+    document.getElementById('registerBtn').textContent = '注册';
+    document.getElementById('registerBtn').disabled = false;
+  }
+}
+
+function doLogout() {
+  authToken = '';
+  currentStoreId = null;
+  currentStoreName = '';
+  localStorage.removeItem('token');
+  if (ws) {
+    ws.close();
+    ws = null;
+  }
+  showAuth();
+}
+
+async function checkAuth() {
+  if (!authToken) {
+    showAuth();
+    return;
+  }
+  try {
+    const res = await fetch('/api/me', {
+      headers: { 'x-token': authToken }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      currentStoreId = data.storeId;
+      currentStoreName = data.storeName;
+      enterStore();
+    } else {
+      authToken = '';
+      localStorage.removeItem('token');
+      showAuth();
+    }
+  } catch {
+    showAuth();
+  }
+}
+
+function enterStore() {
+  showStoreApp();
+  document.getElementById('storeTitle').textContent = currentStoreName || '拼豆工位管理';
+  document.getElementById('storeSub').textContent = currentStoreName || 'Bead Workshop';
+
+  // 访问地址
+  document.getElementById('accessInfo').innerHTML = `
+    员工手机浏览器打开以下地址：<br>
+    <code>${location.origin}</code><br><br>
+    <span style="font-size:13px;color:var(--text-sec);">使用同一账号登录即可，无需连接同一 WiFi</span>
+  `;
+
+  // 重置状态
+  tables = [];
+  stats = null;
+  currentView = 'dashboard';
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.view === 'dashboard');
+  });
+  document.querySelectorAll('.view').forEach(v => {
+    v.classList.toggle('active', v.id === 'view-dashboard');
+  });
+
+  // 清理旧定时器（防止退出再登录后定时器泄漏）
+  if (clockInterval) clearInterval(clockInterval);
+  if (timerInterval) clearInterval(timerInterval);
+
+  // 时钟
+  updateClock();
+  clockInterval = setInterval(updateClock, 1000);
+  timerInterval = setInterval(updateTimers, 1000);
+
+  // WebSocket
+  connectStore();
+}
+
+// ==================== 店铺工位管理 ====================
+
 let tables = [];
 let stats = null;
 let ws = null;
@@ -6,17 +283,12 @@ let currentView = 'dashboard';
 let selectedTableId = null;
 let inUseModalTableId = null;
 let selectedDurationMin = null;
+let clockInterval = null;
+let timerInterval = null;
 
-// ==================== WebSocket ====================
-
-function connect() {
+function connectStore() {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${location.host}`;
-
-  if (!location.host) {
-    updateConnStatus('disconnected', '错误：请通过 http://localhost:3000 访问，不要直接打开 HTML 文件');
-    return;
-  }
+  const wsUrl = `${protocol}//${location.host}/?token=${authToken}`;
 
   updateConnStatus('connecting', '连接中...');
   ws = new WebSocket(wsUrl);
@@ -26,19 +298,32 @@ function connect() {
   };
 
   ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
+    let msg;
+    try {
+      msg = JSON.parse(event.data);
+    } catch {
+      return;
+    }
     handleMessage(msg);
   };
 
   ws.onclose = (event) => {
-    updateConnStatus('disconnected', `连接断开 (${event.code})，${event.wasClean ? '正常关闭' : '2秒后重连'}...`);
+    if (event.code === 1008) {
+      // token 无效，需要重新登录
+      updateConnStatus('disconnected', '登录已过期');
+      setTimeout(() => doLogout(), 1500);
+      return;
+    }
+    updateConnStatus('disconnected', `连接断开 (${event.code})，2秒后重连...`);
     if (!event.wasClean) {
-      setTimeout(connect, 2000);
+      setTimeout(() => {
+        if (authToken) connectStore();
+      }, 2000);
     }
   };
 
   ws.onerror = () => {
-    updateConnStatus('disconnected', `连接失败: 无法连接 ${wsUrl}，请检查服务是否运行`);
+    updateConnStatus('disconnected', '连接失败: 无法连接服务器');
   };
 }
 
@@ -61,6 +346,9 @@ function handleMessage(msg) {
     case 'init':
       tables = msg.tables;
       stats = msg.stats;
+      currentStoreName = msg.storeName || currentStoreName || '';
+      document.getElementById('storeTitle').textContent = currentStoreName || '拼豆工位管理';
+      document.getElementById('storeSub').textContent = currentStoreName || 'Bead Workshop';
       renderAll();
       break;
     case 'tables_updated':
@@ -91,6 +379,9 @@ function handleMessage(msg) {
       stats = msg.stats;
       renderStatsPanel();
       break;
+    case 'error':
+      updateConnStatus('disconnected', msg.message || '错误');
+      break;
   }
 }
 
@@ -103,7 +394,6 @@ function renderAll() {
   if (currentView === 'stats') renderStatsPanel();
 }
 
-// --- 统计条 ---
 function renderStatsBar() {
   const bar = document.getElementById('statsBar');
   if (!stats) return;
@@ -118,7 +408,6 @@ function renderStatsBar() {
   `;
 }
 
-// --- 看板 ---
 function renderDashboard() {
   const grid = document.getElementById('tableGrid');
   if (tables.length === 0) {
@@ -158,7 +447,6 @@ function renderDashboard() {
   updateTimers();
 }
 
-// --- 统计面板 ---
 function renderStatsPanel() {
   const panel = document.getElementById('statsPanel');
   if (!stats) return;
@@ -243,7 +531,6 @@ function renderStatsPanel() {
   `;
 }
 
-// --- 设置列表 ---
 function renderSettingsList() {
   const list = document.getElementById('tableSettingsList');
   if (tables.length === 0) {
@@ -276,7 +563,6 @@ function cycleStatus(tableId) {
   }
 }
 
-// --- 时长弹窗 ---
 function showDurationModal(table) {
   selectedTableId = table.id;
   selectedDurationMin = null;
@@ -320,7 +606,6 @@ function confirmDuration() {
   hideDurationModal();
 }
 
-// --- 使用中弹窗 ---
 function showInUseModal(table) {
   inUseModalTableId = table.id;
   document.getElementById('inUseTableName').textContent = table.name + ' - 使用中';
@@ -389,7 +674,6 @@ function confirmCloseDay() {
 // ==================== 定时器 ====================
 
 function updateTimers() {
-  // 倒计时
   document.querySelectorAll('.timer[data-end]').forEach(el => {
     const end = new Date(el.dataset.end).getTime();
     const remaining = end - Date.now();
@@ -417,7 +701,6 @@ function updateTimers() {
     }
   });
 
-  // 正计时（无限时模式）
   document.querySelectorAll('.timer[data-start]').forEach(el => {
     if (el.dataset.end) return;
     const start = new Date(el.dataset.start).getTime();
@@ -426,7 +709,6 @@ function updateTimers() {
     el.className = 'timer timer-normal';
   });
 
-  // 更新使用中弹窗的剩余时间
   if (inUseModalTableId) {
     const table = tables.find(t => t.id === inUseModalTableId);
     if (table && table.status === 'in_use') {
@@ -440,7 +722,8 @@ function updateClock() {
   const h = String(now.getHours()).padStart(2, '0');
   const m = String(now.getMinutes()).padStart(2, '0');
   const s = String(now.getSeconds()).padStart(2, '0');
-  document.getElementById('clock').textContent = `${h}:${m}:${s}`;
+  const clockEl = document.getElementById('clock');
+  if (clockEl) clockEl.textContent = `${h}:${m}:${s}`;
 }
 
 // ==================== 工具函数 ====================
@@ -474,12 +757,12 @@ function getStatusLabel(status) {
   return { idle: '空闲', in_use: '使用中', cleaning: '待清理' }[status] || status;
 }
 
-// ==================== 视图切换 ====================
-
 function switchView(view) {
   currentView = view;
   document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === view);
+    if (btn.dataset.view) {
+      btn.classList.toggle('active', btn.dataset.view === view);
+    }
   });
   document.querySelectorAll('.view').forEach(v => {
     v.classList.toggle('active', v.id === `view-${view}`);
@@ -488,15 +771,42 @@ function switchView(view) {
   if (view === 'stats') renderStatsPanel();
 }
 
-// ==================== 初始化 ====================
+// ==================== 事件绑定 ====================
 
-function init() {
-  // 导航
-  document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => switchView(btn.dataset.view));
+function bindEvents() {
+  // 认证
+  document.getElementById('loginBtn').addEventListener('click', doLogin);
+  document.getElementById('loginPassword').addEventListener('keypress', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+  document.getElementById('loginUsername').addEventListener('keypress', e => {
+    if (e.key === 'Enter') document.getElementById('loginPassword').focus();
   });
 
-  // 添加桌位
+  document.getElementById('registerBtn').addEventListener('click', doRegister);
+  document.getElementById('regPassword2').addEventListener('keypress', e => {
+    if (e.key === 'Enter') doRegister();
+  });
+
+  document.getElementById('toRegister').addEventListener('click', showRegisterForm);
+  document.getElementById('toLogin').addEventListener('click', showLoginForm);
+  document.getElementById('toForgotPassword').addEventListener('click', showForgotPasswordForm);
+  document.getElementById('toLoginFromForgot').addEventListener('click', showLoginForm);
+  document.getElementById('logoutBtn').addEventListener('click', doLogout);
+
+  document.getElementById('resetPasswordBtn').addEventListener('click', doResetPassword);
+  document.getElementById('fpPassword2').addEventListener('keypress', e => {
+    if (e.key === 'Enter') doResetPassword();
+  });
+
+  // 导航
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    if (btn.dataset.view) {
+      btn.addEventListener('click', () => switchView(btn.dataset.view));
+    }
+  });
+
+  // 桌位管理
   document.getElementById('addTableBtn').addEventListener('click', addTable);
   document.getElementById('newTableName').addEventListener('keypress', e => {
     if (e.key === 'Enter') addTable();
@@ -509,51 +819,31 @@ function init() {
   });
   document.getElementById('closeDayConfirm').addEventListener('click', confirmCloseDay);
 
-  // 时长弹窗 - 快速选择
+  // 时长弹窗
   document.querySelectorAll('#durationModal .duration-btn').forEach(btn => {
     btn.addEventListener('click', () => selectDuration(parseInt(btn.dataset.min)));
   });
-  // 自定义输入清除快速选择
   document.getElementById('durationInput').addEventListener('input', () => {
     selectedDurationMin = null;
     document.querySelectorAll('#durationModal .duration-btn').forEach(btn => {
       btn.classList.remove('selected');
     });
   });
-  // 确认/取消
   document.getElementById('durationConfirm').addEventListener('click', confirmDuration);
   document.getElementById('durationCancel').addEventListener('click', hideDurationModal);
-  // 回车确认
   document.getElementById('durationInput').addEventListener('keypress', e => {
     if (e.key === 'Enter') confirmDuration();
   });
 
-  // 使用中弹窗 - 延长按钮
+  // 使用中弹窗
   document.querySelectorAll('#inUseModal .duration-btn').forEach(btn => {
     btn.addEventListener('click', () => extendTime(parseInt(btn.dataset.min)));
   });
-  // 关闭/结束
   document.getElementById('inUseClose').addEventListener('click', hideInUseModal);
   document.getElementById('inUseEnd').addEventListener('click', endInUseSession);
-
-  // 获取访问地址
-  fetch('/api/info').then(r => r.json()).then(info => {
-    document.getElementById('accessInfo').innerHTML = `
-      员工手机浏览器打开以下地址：<br>
-      <code>http://${info.ip}:${info.port}</code><br><br>
-      <span style="font-size:13px;color:var(--text-sec);">需连接同一 WiFi</span>
-    `;
-  });
-
-  // 时钟
-  updateClock();
-  setInterval(updateClock, 1000);
-
-  // 计时器
-  setInterval(updateTimers, 1000);
-
-  // WebSocket
-  connect();
 }
 
-init();
+// ==================== 启动 ====================
+
+bindEvents();
+checkAuth();

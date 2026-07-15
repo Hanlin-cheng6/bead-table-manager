@@ -1,3 +1,6 @@
 node_modules/
 data.json
+data_*.json
+users.json
+stores.json
 .env

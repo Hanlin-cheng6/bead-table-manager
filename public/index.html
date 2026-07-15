@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="拼豆工位">
@@ -14,62 +14,116 @@
 </head>
 <body>
   <div id="app">
-    <!-- 顶部栏 -->
-    <header class="header">
-      <div class="header-left">
-        <h1 class="logo">拼豆工位管理</h1>
-        <span class="header-sub">Bead Workshop</span>
-        <div class="clock" id="clock">--:--:--</div>
-      </div>
-      <nav class="nav" role="tablist" aria-label="主导航">
-        <button class="nav-btn active" data-view="dashboard" role="tab" aria-selected="true">看板</button>
-        <button class="nav-btn" data-view="stats" role="tab" aria-selected="false">统计</button>
-        <button class="nav-btn" data-view="settings" role="tab" aria-selected="false">设置</button>
-      </nav>
-    </header>
+    <!-- ========== 认证页面（登录/注册） ========== -->
+    <div id="authApp" style="display:none;">
+      <div class="auth-wrap">
+        <div class="auth-box">
+          <div class="auth-logo">
+            <svg viewBox="0 0 100 100" width="56" height="56">
+              <circle cx="30" cy="30" r="18" fill="#e07856"/>
+              <circle cx="70" cy="30" r="18" fill="#6bbf8a"/>
+              <circle cx="30" cy="70" r="18" fill="#f5a623"/>
+              <circle cx="70" cy="70" r="18" fill="#c5a3e0"/>
+            </svg>
+          </div>
+          <h1 class="auth-title">拼豆工位管理</h1>
 
-    <!-- 连接状态 -->
-    <div class="conn-bar" id="connBar">
-      <span class="conn-dot"></span>
-      <span class="conn-text">连接中...</span>
+          <!-- 登录表单 -->
+          <div id="loginForm">
+            <p class="auth-sub">登录你的店铺</p>
+            <input type="text" id="loginUsername" placeholder="用户名" class="input auth-input" autocomplete="username">
+            <input type="password" id="loginPassword" placeholder="密码" class="input auth-input" autocomplete="current-password">
+            <button id="loginBtn" class="btn btn-primary auth-btn">登录</button>
+            <div class="auth-links">
+              <a href="javascript:void(0)" id="toForgotPassword">忘记密码？</a>
+            </div>
+            <p class="auth-switch">还没有账号？<a href="javascript:void(0)" id="toRegister">立即注册</a></p>
+            <p id="loginError" class="auth-error" style="display:none;"></p>
+          </div>
+
+          <!-- 找回密码表单 -->
+          <div id="forgotPasswordForm" style="display:none;">
+            <p class="auth-sub">重置密码</p>
+            <p class="auth-hint">请填写注册时的用户名和店铺名称，验证通过后即可设置新密码。</p>
+            <input type="text" id="fpUsername" placeholder="用户名" class="input auth-input" autocomplete="username">
+            <input type="text" id="fpStoreName" placeholder="店铺名称" class="input auth-input">
+            <input type="password" id="fpPassword" placeholder="新密码（至少6位）" class="input auth-input" autocomplete="new-password">
+            <input type="password" id="fpPassword2" placeholder="确认新密码" class="input auth-input" autocomplete="new-password">
+            <button id="resetPasswordBtn" class="btn btn-primary auth-btn">确认重置</button>
+            <p class="auth-switch"><a href="javascript:void(0)" id="toLoginFromForgot">返回登录</a></p>
+            <p id="forgotPasswordError" class="auth-error" style="display:none;"></p>
+          </div>
+
+          <!-- 注册表单 -->
+          <div id="registerForm" style="display:none;">
+            <p class="auth-sub">创建新店铺账号</p>
+            <input type="text" id="regStoreName" placeholder="店铺名称（如：朝阳大悦城店）" class="input auth-input">
+            <input type="text" id="regUsername" placeholder="用户名（2-20个字符）" class="input auth-input" autocomplete="username">
+            <input type="password" id="regPassword" placeholder="密码（至少6位）" class="input auth-input" autocomplete="new-password">
+            <input type="password" id="regPassword2" placeholder="确认密码" class="input auth-input" autocomplete="new-password">
+            <button id="registerBtn" class="btn btn-primary auth-btn">注册</button>
+            <p class="auth-switch">已有账号？<a href="javascript:void(0)" id="toLogin">返回登录</a></p>
+            <p id="registerError" class="auth-error" style="display:none;"></p>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- 看板视图 -->
-    <main class="view active" id="view-dashboard">
-      <div class="stats-bar" id="statsBar"></div>
-      <div class="table-grid" id="tableGrid"></div>
-    </main>
+    <!-- ========== 工位管理系统 ========== -->
+    <div id="storeApp" style="display:none;">
+      <header class="header">
+        <div class="header-left">
+          <h1 class="logo" id="storeTitle">拼豆工位管理</h1>
+          <span class="header-sub" id="storeSub">Bead Workshop</span>
+          <div class="clock" id="clock">--:--:--</div>
+        </div>
+        <nav class="nav" role="tablist" aria-label="主导航">
+          <button class="nav-btn active" data-view="dashboard" role="tab" aria-selected="true">看板</button>
+          <button class="nav-btn" data-view="stats" role="tab" aria-selected="false">统计</button>
+          <button class="nav-btn" data-view="settings" role="tab" aria-selected="false">设置</button>
+        </nav>
+        <button id="logoutBtn" class="btn btn-sm btn-ghost">退出</button>
+      </header>
 
-    <!-- 统计视图 -->
-    <main class="view" id="view-stats">
-      <div class="stats-panel" id="statsPanel"></div>
-    </main>
-
-    <!-- 设置视图 -->
-    <main class="view" id="view-settings">
-      <div class="settings-panel">
-        <section class="settings-section">
-          <h2>桌位管理</h2>
-          <div class="table-list" id="tableSettingsList"></div>
-          <div class="add-form">
-            <input type="text" id="newTableName" placeholder="桌名 (如: 9号桌)" class="input">
-            <input type="number" id="newTableSeats" placeholder="座位" value="4" min="1" max="20" class="input input-seats">
-            <button id="addTableBtn" class="btn btn-primary">添加</button>
-          </div>
-        </section>
-
-        <section class="settings-section">
-          <h2>手机访问</h2>
-          <div class="access-info" id="accessInfo">加载中...</div>
-        </section>
-
-        <section class="settings-section">
-          <h2>每日收班</h2>
-          <p class="hint">收班会结束所有使用中的桌位，归档当日数据，并将所有桌位重置为空闲。</p>
-          <button id="closeDayBtn" class="btn btn-danger">执行收班</button>
-        </section>
+      <div class="conn-bar" id="connBar">
+        <span class="conn-dot"></span>
+        <span class="conn-text">连接中...</span>
       </div>
-    </main>
+
+      <main class="view active" id="view-dashboard">
+        <div class="stats-bar" id="statsBar"></div>
+        <div class="table-grid" id="tableGrid"></div>
+      </main>
+
+      <main class="view" id="view-stats">
+        <div class="stats-panel" id="statsPanel"></div>
+      </main>
+
+      <main class="view" id="view-settings">
+        <div class="settings-panel">
+          <section class="settings-section">
+            <h2>桌位管理</h2>
+            <div class="table-list" id="tableSettingsList"></div>
+            <div class="add-form">
+              <input type="text" id="newTableName" placeholder="桌名（如：9号桌）" class="input">
+              <input type="number" id="newTableSeats" placeholder="座位" value="4" min="1" max="20" class="input input-seats">
+              <button id="addTableBtn" class="btn btn-primary">添加</button>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h2>员工访问地址</h2>
+            <div class="access-info" id="accessInfo">加载中...</div>
+          </section>
+
+          <section class="settings-section">
+            <h2>每日收班</h2>
+            <p class="hint">收班会结束所有使用中的桌位，归档当日数据，并将所有桌位重置为空闲。</p>
+            <button id="closeDayBtn" class="btn btn-danger">执行收班</button>
+          </section>
+        </div>
+      </main>
+    </div>
   </div>
 
   <!-- 收班确认弹窗 -->
