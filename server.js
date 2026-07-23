@@ -13,8 +13,20 @@ const USERS_FILE = path.join(__dirname, 'users.json');
 const PORT = process.env.PORT || 3000;
 const TOKEN_TTL = 7 * 24 * 60 * 60 * 1000; // 7天有效期（滑动续期）
 
+// 禁止 HTML 缓存，防止浏览器残留旧页面
+app.use((req, res, next) => {
+  if (req.path === '/' || req.path.endsWith('.html')) {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
+
+// 获取客户端真实 IP（经 Nginx 反代后取 x-forwarded-for）
+function getClientIP(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || '';
+}
 
 // ==================== 用户数据 ====================
 
@@ -92,7 +104,7 @@ function getStoreData(storeId) {
   return storeDataCache[storeId];
 }
 
-function verifyAndRefreshToken(token) {
+function verifyAndRefreshToken(token, ip) {
   if (!token) return null;
   const users = loadUsers();
   const tokenInfo = users.tokens[token];
@@ -100,6 +112,13 @@ function verifyAndRefreshToken(token) {
 
   // 检查是否过期
   if (tokenInfo.expires && Date.now() > tokenInfo.expires) {
+    delete users.tokens[token];
+    saveUsers(users);
+    return null;
+  }
+
+  // 检查 IP 是否匹配（绑定 IP 防止 token 被盗用）
+  if (tokenInfo.ip && ip && tokenInfo.ip !== ip) {
     delete users.tokens[token];
     saveUsers(users);
     return null;
@@ -258,7 +277,8 @@ app.post('/api/register', registerLimiter, (req, res) => {
     storeId,
     storeName,
     createdAt: new Date().toISOString(),
-    expires: Date.now() + TOKEN_TTL
+    expires: Date.now() + TOKEN_TTL,
+    ip: getClientIP(req)
   };
   saveUsers(users);
 
@@ -323,7 +343,8 @@ app.post('/api/login', (req, res) => {
     storeId: user.storeId,
     storeName: user.storeName,
     createdAt: new Date().toISOString(),
-    expires: Date.now() + TOKEN_TTL
+    expires: Date.now() + TOKEN_TTL,
+    ip: getClientIP(req)
   };
   saveUsers(users);
 
@@ -334,7 +355,7 @@ app.get('/api/me', (req, res) => {
   const token = req.headers['x-token'];
   if (!token) return res.status(401).json({ error: '\u672a\u767b\u5f55' });
 
-  const tokenInfo = verifyAndRefreshToken(token);
+  const tokenInfo = verifyAndRefreshToken(token, getClientIP(req));
   if (!tokenInfo) return res.status(401).json({ error: 'token\u65e0\u6548' });
 
   res.json({
@@ -455,7 +476,8 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
-  const tokenInfo = verifyAndRefreshToken(token);
+  const wsIP = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || '';
+  const tokenInfo = verifyAndRefreshToken(token, wsIP);
   if (!tokenInfo) {
     ws.send(JSON.stringify({ type: 'error', message: '\u767b\u5f55\u5df2\u8fc7\u671f\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55' }));
     ws.close(1008, 'Invalid token');
