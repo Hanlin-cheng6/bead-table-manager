@@ -4,6 +4,7 @@ const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const multer = require('multer');
 
 const app = express();
 const server = http.createServer(app);
@@ -22,6 +23,24 @@ app.use((req, res, next) => {
 });
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
+
+// 图片上传配置
+const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: UPLOADS_DIR,
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname) || '.jpg';
+      cb(null, `${crypto.randomBytes(8).toString('hex')}${ext}`);
+    }
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = /\.(jpg|jpeg|png|gif|webp)$/i;
+    cb(null, allowed.test(path.extname(file.originalname)));
+  }
+});
 
 // 获取客户端真实 IP（经 Nginx 反代后取 x-forwarded-for）
 function getClientIP(req) {
@@ -89,6 +108,51 @@ function initStoreTables(data) {
     }
   }
   return data;
+}
+
+// ==================== 商品数据 ====================
+
+function getProductsFile(storeId) {
+  return path.join(__dirname, `products_${storeId}.json`);
+}
+
+function loadProducts(storeId) {
+  try {
+    return JSON.parse(fs.readFileSync(getProductsFile(storeId), 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function saveProducts(storeId, products) {
+  fs.writeFileSync(getProductsFile(storeId), JSON.stringify(products, null, 2));
+}
+
+// ==================== 订单数据 ====================
+
+function getOrdersFile(storeId) {
+  return path.join(__dirname, `orders_${storeId}.json`);
+}
+
+function loadOrders(storeId) {
+  try {
+    return JSON.parse(fs.readFileSync(getOrdersFile(storeId), 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function saveOrders(storeId, orders) {
+  fs.writeFileSync(getOrdersFile(storeId), JSON.stringify(orders, null, 2));
+}
+
+function generateOrderId() {
+  const now = new Date();
+  const d = String(now.getDate()).padStart(2, '0');
+  const h = String(now.getHours()).padStart(2, '0');
+  const m = String(now.getMinutes()).padStart(2, '0');
+  const s = String(now.getSeconds()).padStart(2, '0');
+  return `o${d}${h}${m}${s}_${crypto.randomBytes(2).toString('hex')}`;
 }
 
 // 内存缓存
@@ -397,6 +461,168 @@ app.post('/api/reset-password', registerLimiter, (req, res) => {
   saveUsers(users);
 
   res.json({ success: true, message: '\u5bc6\u7801\u91cd\u7f6e\u6210\u529f\uff0c\u8bf7\u7528\u65b0\u5bc6\u7801\u767b\u5f55' });
+});
+
+// ==================== 商品 API ====================
+
+// 鉴权中间件（REST 复用）
+function authMiddleware(req, res, next) {
+  const token = req.headers['x-token'];
+  if (!token) return res.status(401).json({ error: '\u672a\u767b\u5f55' });
+  const tokenInfo = verifyAndRefreshToken(token, getClientIP(req));
+  if (!tokenInfo) return res.status(401).json({ error: 'token\u65e0\u6548' });
+  req.storeId = tokenInfo.storeId;
+  req.storeName = tokenInfo.storeName;
+  next();
+}
+
+app.get('/api/products', authMiddleware, (req, res) => {
+  const products = loadProducts(req.storeId);
+  res.json(products);
+});
+
+app.post('/api/products', authMiddleware, upload.single('image'), (req, res) => {
+  const { name, category, price, stock, unit } = req.body;
+  if (!name || !category) {
+    return res.status(400).json({ error: '\u8bf7\u586b\u5199\u5546\u54c1\u540d\u79f0\u548c\u5206\u7c7b' });
+  }
+
+  const products = loadProducts(req.storeId);
+  const existingId = req.body.id;
+
+  if (existingId) {
+    // 编辑已有商品
+    const idx = products.findIndex(p => p.id === existingId);
+    if (idx === -1) return res.status(404).json({ error: '\u5546\u54c1\u4e0d\u5b58\u5728' });
+    products[idx].name = name;
+    products[idx].category = category;
+    products[idx].price = price ? parseFloat(price) : products[idx].price;
+    products[idx].stock = stock !== undefined && stock !== '' ? parseInt(stock) : products[idx].stock;
+    products[idx].unit = unit || products[idx].unit;
+    if (req.file) products[idx].image = `/uploads/${req.file.filename}`;
+    products[idx].updatedAt = new Date().toISOString();
+  } else {
+    // 新增商品
+    const product = {
+      id: `p${Date.now()}`,
+      name,
+      category,
+      price: price ? parseFloat(price) : 0,
+      stock: stock !== undefined && stock !== '' ? parseInt(stock) : 0,
+      unit: unit || '\u4e2a',
+      image: req.file ? `/uploads/${req.file.filename}` : '',
+      active: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    products.push(product);
+  }
+
+  saveProducts(req.storeId, products);
+  res.json(existingId ? { success: true } : products[products.length - 1]);
+});
+
+app.delete('/api/products/:id', authMiddleware, (req, res) => {
+  const products = loadProducts(req.storeId);
+  const idx = products.findIndex(p => p.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: '\u5546\u54c1\u4e0d\u5b58\u5728' });
+
+  // 删除关联图片文件
+  if (products[idx].image) {
+    const imgPath = path.join(__dirname, 'public', products[idx].image);
+    try { fs.unlinkSync(imgPath); } catch {}
+  }
+
+  products.splice(idx, 1);
+  saveProducts(req.storeId, products);
+  res.json({ success: true });
+});
+
+// ==================== 订单 API ====================
+
+app.post('/api/orders', authMiddleware, (req, res) => {
+  const { tableId, tableName, items, paymentMethod } = req.body;
+  // tableId 可选：允许"其它（不关联桌号）"的纯购物订单
+  if (!items || items.length === 0) {
+    return res.status(400).json({ error: '\u8bf7\u9009\u62e9\u5546\u54c1' });
+  }
+
+  const products = loadProducts(req.storeId);
+  const orders = loadOrders(req.storeId);
+  let totalAmount = 0;
+
+  // 计算总价并校验库存
+  for (const item of items) {
+    const product = products.find(p => p.id === item.productId);
+    if (!product) return res.status(400).json({ error: `\u5546\u54c1 ${item.productId} \u4e0d\u5b58\u5728` });
+    if (product.stock < item.qty) {
+      return res.status(400).json({ error: `\u300a${product.name}\u300b\u5e93\u5b58\u4e0d\u8db3\uff08\u5269\u4f59 ${product.stock}\uff09` });
+    }
+    item.name = product.name;
+    item.price = product.price;
+    totalAmount += product.price * item.qty;
+  }
+
+  // 扣减库存
+  for (const item of items) {
+    const product = products.find(p => p.id === item.productId);
+    product.stock -= item.qty;
+  }
+  saveProducts(req.storeId, products);
+
+  const order = {
+    id: generateOrderId(),
+    tableId,
+    tableName: tableName || '\u5176\u5b83',
+    items,
+    totalAmount: Math.round(totalAmount * 100) / 100,
+    status: 'pending',
+    paymentMethod: paymentMethod || '\u5fae\u4fe1',
+    createdAt: new Date().toISOString(),
+    paidAt: null
+  };
+  orders.push(order);
+  saveOrders(req.storeId, orders);
+
+  res.json(order);
+});
+
+app.get('/api/orders', authMiddleware, (req, res) => {
+  const orders = loadOrders(req.storeId);
+  const date = req.query.date || new Date().toISOString().split('T')[0];
+  const filtered = orders.filter(o => o.createdAt.startsWith(date));
+  // 返回所有订单 + 今日营业额
+  const todayTotal = filtered
+    .filter(o => o.status === 'paid')
+    .reduce((sum, o) => sum + o.totalAmount, 0);
+  res.json({ orders: filtered, todayTotal: Math.round(todayTotal * 100) / 100, date });
+});
+
+app.put('/api/orders/:id/status', authMiddleware, (req, res) => {
+  const { status } = req.body;
+  if (!['pending', 'paid', 'cancelled'].includes(status)) {
+    return res.status(400).json({ error: '\u65e0\u6548\u72b6\u6001' });
+  }
+
+  const orders = loadOrders(req.storeId);
+  const order = orders.find(o => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: '\u8ba2\u5355\u4e0d\u5b58\u5728' });
+
+  // 取消订单时恢复库存
+  if (status === 'cancelled' && order.status !== 'cancelled') {
+    const products = loadProducts(req.storeId);
+    for (const item of order.items) {
+      const product = products.find(p => p.id === item.productId);
+      if (product) product.stock += item.qty;
+    }
+    saveProducts(req.storeId, products);
+  }
+
+  order.status = status;
+  if (status === 'paid') order.paidAt = new Date().toISOString();
+  saveOrders(req.storeId, orders);
+
+  res.json({ success: true, order });
 });
 
 // ==================== WebSocket ====================

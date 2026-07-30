@@ -1,6 +1,10 @@
 node_modules/
 data.json
 data_*.json
+data/
 users.json
 stores.json
 .env
+orders_*.json
+products_*.json
+public/uploads/

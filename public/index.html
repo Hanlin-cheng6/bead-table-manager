@@ -80,6 +80,8 @@
         <nav class="nav" role="tablist" aria-label="主导航">
           <button class="nav-btn active" data-view="dashboard" role="tab" aria-selected="true">看板</button>
           <button class="nav-btn" data-view="stats" role="tab" aria-selected="false">统计</button>
+          <button class="nav-btn" data-view="products" role="tab" aria-selected="false">商品</button>
+          <button class="nav-btn" data-view="orders" role="tab" aria-selected="false">订单</button>
           <button class="nav-btn" data-view="settings" role="tab" aria-selected="false">设置</button>
         </nav>
         <button id="logoutBtn" class="btn btn-sm btn-ghost">退出</button>
@@ -122,6 +124,27 @@
             <button id="closeDayBtn" class="btn btn-danger">执行收班</button>
           </section>
         </div>
+      </main>
+
+      <!-- ========== 商品管理 ========== -->
+      <main class="view" id="view-products">
+        <div class="category-bar" id="categoryBar"></div>
+        <div class="toolbar">
+          <button id="addProductBtn" class="btn btn-primary">＋ 新增商品</button>
+        </div>
+        <div class="product-grid" id="productGrid"></div>
+      </main>
+
+      <!-- ========== 订单管理 ========== -->
+      <main class="view" id="view-orders">
+        <div class="orders-summary" id="ordersSummary"></div>
+        <div class="orders-tabs" id="ordersTabs">
+          <button class="order-tab active" data-status="all">全部</button>
+          <button class="order-tab" data-status="pending">待付款</button>
+          <button class="order-tab" data-status="paid">已付款</button>
+          <button class="order-tab" data-status="cancelled">已取消</button>
+        </div>
+        <div class="orders-list" id="ordersList"></div>
       </main>
     </div>
   </div>
@@ -186,6 +209,72 @@
       <div class="modal-actions">
         <button class="btn btn-cancel" id="inUseClose">关闭</button>
         <button class="btn btn-danger" id="inUseEnd">结束使用</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 商品编辑弹窗 -->
+  <div class="modal-overlay" id="productModal" style="display:none;">
+    <div class="modal modal-wide">
+      <h3 id="productModalTitle">新增商品</h3>
+      <div class="form-group">
+        <label class="form-label">商品名称</label>
+        <input type="text" id="productName" class="input" placeholder="如：星之卡比拼豆套装">
+      </div>
+      <div class="form-group">
+        <label class="form-label">分类</label>
+        <div class="category-select" id="productCategory"></div>
+        <input type="text" id="productCustomCategory" class="input" placeholder="自定义分类（选填）" style="display:none;margin-top:6px;">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">单价（元）</label>
+          <input type="number" id="productPrice" class="input" placeholder="0.00" step="0.01" min="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">库存</label>
+          <input type="number" id="productStock" class="input" placeholder="0" min="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">单位</label>
+          <input type="text" id="productUnit" class="input" placeholder="个/套/包" value="个">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">商品图片</label>
+        <div class="image-upload" id="imageUploadArea">
+          <input type="file" id="productImage" accept="image/*" style="display:none;">
+          <div class="image-preview" id="imagePreview">
+            <span>点击上传图片</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-cancel" id="productCancel">取消</button>
+        <button class="btn btn-primary" id="productSave">保存</button>
+      </div>
+      <input type="hidden" id="productEditId">
+    </div>
+  </div>
+
+  <!-- 下单弹窗 -->
+  <div class="modal-overlay" id="orderModal" style="display:none;">
+    <div class="modal modal-wide">
+      <h3>下单</h3>
+      <div class="form-group">
+        <label class="form-label">关联桌号</label>
+        <select id="orderTableId" class="input"></select>
+      </div>
+      <div class="order-items" id="orderItems"></div>
+      <div class="form-group" style="margin-top:12px;">
+        <button id="addOrderItemBtn" class="btn btn-sm">＋ 添加商品</button>
+      </div>
+      <div class="order-total">
+        合计：<strong id="orderTotal">¥0.00</strong>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-cancel" id="orderCancel">取消</button>
+        <button class="btn btn-primary" id="orderConfirm">确认下单</button>
       </div>
     </div>
   </div>
