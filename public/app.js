@@ -1,3 +1,42 @@
+// ==================== 语音播报 ====================
+
+let audioUnlocked = false;
+let zhVoice = null;
+let warnedTimers = {};  // key: tableId -> { tenMin: boolean, ended: boolean }
+
+function loadVoices() {
+  if (!('speechSynthesis' in window)) return;
+  const voices = speechSynthesis.getVoices();
+  zhVoice = voices.find(v => /zh/i.test(v.lang) && !/yue|cmn/i.test(v.lang + v.name))
+         || voices.find(v => /zh/i.test(v.lang))
+         || voices[0]
+         || null;
+}
+
+if ('speechSynthesis' in window) {
+  loadVoices();
+  speechSynthesis.onvoiceschanged = loadVoices;
+}
+
+function speak(text, opts = {}) {
+  if (!('speechSynthesis' in window)) return;
+  if (!audioUnlocked) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'zh-CN';
+    if (zhVoice) u.voice = zhVoice;
+    u.rate  = opts.rate  ?? 1.0;
+    u.pitch = opts.pitch ?? 1.0;
+    u.volume = opts.volume ?? 1.0;
+    speechSynthesis.speak(u);
+  } catch (e) {
+    // 无声卡、无 TTS 引擎等情况静默跳过
+  }
+}
+
+document.addEventListener('click', () => { audioUnlocked = true; }, { once: false });
+
 // ==================== 认证逻辑 ====================
 
 let authToken = localStorage.getItem('token') || '';
@@ -602,7 +641,12 @@ function confirmDuration() {
     return;
   }
 
+  const table = tables.find(t => t.id === selectedTableId);
   send({ type: 'update_status', tableId: selectedTableId, status: 'in_use', durationMin: minutes });
+  // 语音播报：开始
+  const startName = table ? table.name : '';
+  warnedTimers[selectedTableId] = { tenMin: false, ended: false };
+  speak(`${startName}开始`);
   hideDurationModal();
 }
 
@@ -678,6 +722,8 @@ function updateTimers() {
     const end = new Date(el.dataset.end).getTime();
     const remaining = end - Date.now();
     const card = el.closest('.table-card');
+    const tableId = card ? card.dataset.id : null;
+    const tableName = card ? card.querySelector('.table-name')?.textContent || '' : '';
 
     if (remaining <= 0) {
       el.textContent = '时间到';
@@ -686,10 +732,22 @@ function updateTimers() {
         card.classList.add('timeup');
         card.classList.remove('warning');
       }
+      // 语音播报：结束（仅首次）
+      if (tableId && warnedTimers[tableId] && !warnedTimers[tableId].ended) {
+        warnedTimers[tableId].ended = true;
+        speak(`${tableName}已结束`);
+      }
     } else {
       el.textContent = formatClock(remaining);
       if (card) {
         card.classList.remove('timeup');
+        // 语音播报：还剩 10 分钟（仅首次）
+        if (remaining <= 10 * 60 * 1000 && remaining > 9.5 * 60 * 1000) {
+          if (tableId && warnedTimers[tableId] && !warnedTimers[tableId].tenMin) {
+            warnedTimers[tableId].tenMin = true;
+            speak(`${tableName}还剩10分钟`);
+          }
+        }
         if (remaining < 5 * 60 * 1000) {
           el.className = 'timer timer-warning';
           card.classList.add('warning');
